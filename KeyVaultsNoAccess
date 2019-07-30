@@ -1,0 +1,11 @@
+#this script will show Key Vaults in the current subscription for which you can't view the Secrets therein
+#this could be down to Firewalling or Access Policies blocking you
+
+$allkv = get-azkeyvault 
+foreach ($onekv in $allkv)
+{
+$error.Clear()
+$kvs = Get-AzKeyVaultSecret -VaultName $onekv.vaultname -ErrorAction SilentlyContinue
+if ($error) {write-host "Firewall and/or Access Policies preventing access to KV"$onekv.VaultName}
+else {write-host "Firewall and/or Access Policies not preventing access to KV"$onekv.VaultName}
+}
