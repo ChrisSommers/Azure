@@ -1,0 +1,57 @@
+#it can be tedious to assign this policy, especially if multiple resource types are to be allowed
+#this script makes it much easier. you just pick the type(s) and the RG and it assigns it for you
+
+$jsonfile = 'c:\temp\params.json'
+
+#create array with current resource types
+$alltypes = [System.Collections.ArrayList]@()
+$provs = get-azresourceprovider
+foreach ($oneprov in $provs)
+{
+$rtqty = ($oneprov.ResourceTypes).count
+$ctr = 1
+do
+{
+    $onetype = $oneprov.providernamespace+"/"+$oneprov.ResourceTypes[$ctr].ResourceTypeName
+    $alltypes.Add($onetype)
+    $ctr++
+}
+while ($ctr -le $rtqty)
+}
+
+#choose types to go into Policy json
+$chosentypes = $alltypes | Out-GridView -Title "Select the Resource Types to allow in the Policy" -PassThru
+
+#create json file
+write-output '{' | out-file $jsonfile
+write-output '"listOfResourceTypesAllowed":  {' | out-file $jsonfile -Append
+write-output '"value":  [' | out-file $jsonfile -Append
+foreach ($onechosentype in $chosentypes)
+{
+write-output """$onechosentype""," | out-file $jsonfile -Append
+}
+
+#remove comma appended by last iteration of loop
+$replaceCharacter = ''
+$filecontent = Get-Content $jsonfile
+$filecontent[-1] = $filecontent[-1] -replace '^(.*).$', "`$1$replaceCharacter"
+$filecontent | Set-Content $jsonfile
+
+#add end of file bits to finish json file
+write-output ']' | out-file $jsonfile -Append
+write-output '}' | out-file $jsonfile -Append
+write-output '}' | out-file $jsonfile -Append
+
+#ask which RG(s) to apply the policy to
+$rg = get-azresourcegroup | Out-GridView -Title "Select the Resource Group(s) to apply the Allowed Resource Types Policy to" -PassThru
+
+#apply the policy to the RG(s)
+$policy = get-azpolicydefinition -Id '/providers/Microsoft.Authorization/policyDefinitions/a08ec900-254a-4555-9bf5-e42af04b5c5c'
+foreach ($onerg in $rg)
+{
+"Applying Policy to RG "+$onerg.ResourceGroupName
+"Resource types allowed under Policy are: "
+$chosentypes
+New-azPolicyAssignment -Name 'List of Resource Types Allowed' -PolicyDefinition $Policy -Scope $onerg.ResourceId -PolicyParameter $jsonfile
+}
+remove-item $jsonfile
