@@ -1,0 +1,28 @@
+#this will go through all subs and all VMs, report sizes and also last 60 minutes CPU utilisation. Sort of like a command line azure advisor in that you can see which VMs have low cpu (at least over last hour)
+
+cls
+$sizes = Get-azVMSize -Location northeurope
+Write-Output "vmname,size,cpus,ram,maxdatadisks,ostype,resourcegroup,last60minscpuavgpercent"
+$allvms = [System.Collections.ArrayList]@()
+$subs=get-azsubscription
+foreach ($sub in $subs)
+{
+Select-azSubscription -Subscription $sub.name | out-null
+$subvms = get-azvm 
+$allvms += $subvms
+}
+foreach ($onevm in $allvms)
+{
+$onevmsize = $sizes | Where {$_.name -eq $onevm.hardwareprofile.VmSize}
+$onevmcpu = $onevmsize.NumberOfCores
+$onevmram = $onevmsize.memoryinmb
+$onevmmaxdisks = $onevmsize.maxdatadiskcount
+$onevmrg = $onevm.ResourceGroupName
+$onevmostype = $onevm.storageprofile.ImageReference.sku
+$vmmetrics=Get-azMetric -ResourceId $onevm.Id -WarningAction SilentlyContinue
+$vmmetricsdata=$vmmetrics.data
+$avg=0
+foreach ($onevmmetricsdata in $vmmetricsdata) {$avg+=$onevmmetricsdata.average}
+$overallavg = $($avg/($vmmetricsdata.count))
+$onevm.Name+","+$onevm.HardwareProfile.VmSize+","+$onevmcpu+","+$onevmram+","+$onevmmaxdisks+","+$onevmostype+","+$onevmrg+","+$overallavg #| out-file -append c:\temp\vmsizes.csv
+}
