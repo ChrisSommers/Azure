@@ -1,0 +1,41 @@
+#this script will ask you to choose an RG from within the sub
+#it will then ask for a new RG name and a region for the RG
+#it will then create that RG and apply the same Tags, RBAC and Policies to the new RG as were on the source RG
+
+$srcrg = (Get-azResourceGroup | Out-GridView -Title "Select an RG to copy the Tags, RBAC and Policies from …" -outputmode Single)
+$rgid = $srcrg.ResourceId
+$rbac = Get-azRoleAssignment -Scope $rgid
+$rbac2 = $rbac | ? {$_.scope -eq $srcrg.ResourceId}
+$tags = $srcrg.Tags
+[System.Reflection.Assembly]::LoadWithPartialName("Microsoft.VisualBasic") | Out-Null
+$newrg = [Microsoft.VisualBasic.Interaction]::InputBox("Name?", "New Resource Group")
+$locn = (Get-azLocation | select-object -property location | Out-GridView -Title "Select a Region …" -outputmode Single).location
+"Copying Tags, RBAC and Policies from "+($srcrg.ResourceGroupName)+" to new RG named "+$newrg+" in Region "+$locn
+$newrgobj = New-azResourceGroup -Name $newrg -Location $locn 
+foreach ($onera in $rbac2)
+{
+New-azRoleAssignment -ResourceGroupName $newrg -objectid $onera.objectid -RoleDefinitionName $onera.roledefinitionname | Out-Null
+}
+"Created "+$rbac2.count+" RBAC/IAM entries on this RG (inheritance will add extra permissions)"
+Set-azResourceGroup -Id $newrgobj.ResourceId -Tag $tags | out-null
+"Created "+$tags.count+" Tags on this RG"
+"Don't forget to update the copied Tags accordingly, e.g. change Environment from DEV to UAT"
+
+$pols = Get-azPolicyAssignment -Scope $srcrg.ResourceId 
+$ctr=0
+"Copying Policy Assignments from "+($srcrg.ResourceGroupName)+" to new RG named "+$newrg
+foreach ($onepol in $pols)
+{
+if ($onepol.properties.scope -eq $srcrg.resourceid)
+{
+$ctr++
+$assignname = $onepol.Properties.displayName
+$poldef = get-azpolicydefinition -Id $onepol.properties.policydefinitionid
+$params = $onepol.properties.parameters
+$paramsjson = $params | ConvertTo-Json | out-file c:\temp\params.json
+new-azpolicyassignment -name $assignname -PolicyDefinition $poldef -scope $newrgobj.ResourceId -PolicyParameter c:\temp\params.json | Out-Null
+}
+}
+"Copied "+$ctr+" Policies from "+$srcrg.ResourceGroupName+" to "+$newrg
+"Don't forget to update the policy assignment parameters accordingly, e.g. for different naming conventions"
+
