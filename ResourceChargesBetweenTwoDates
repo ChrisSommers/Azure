@@ -1,0 +1,99 @@
+#this script will use grids to ask you to choose a start date, an end date and one or more resources from the subscription
+#you can use the resources grid to filter by name or resource type etc - useful for eg selecting all storage accounts
+#it will then report on the cost for those resources between those dates
+#note the consumption cmdlets only work on certain types of subscription and are also dependent on permissions
+#note that if you select a VM, then only its compute charges will be shown
+#managed disks need to be selected separately. unmanaged disks can't be selected (choose storage account)
+
+$startdate = $null
+$Enddate = $null
+$chosenres = $null
+$total = 0
+
+#get Start Date
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$form = New-Object Windows.Forms.Form
+$form.Text = 'Start Date?'
+$form.Size = New-Object Drawing.Size @(243,230)
+$form.StartPosition = 'CenterScreen'
+$calendar = New-Object System.Windows.Forms.MonthCalendar
+$calendar.ShowTodayCircle = $false
+$calendar.MaxSelectionCount = 1
+$form.Controls.Add($calendar)
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(38,165)
+$OKButton.Size = New-Object System.Drawing.Size(75,23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$form.AcceptButton = $OKButton
+$form.Controls.Add($OKButton)
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(113,165)
+$CancelButton.Size = New-Object System.Drawing.Size(75,23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form.CancelButton = $CancelButton
+$form.Controls.Add($CancelButton)
+$form.Topmost = $true
+$result = $form.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK)
+{
+    $startdate = $calendar.SelectionStart
+}
+if (! $startdate) {"Nothing selected, exiting...";return}
+
+#get End Date
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+$form = New-Object Windows.Forms.Form
+$form.Text = 'End Date?'
+$form.Size = New-Object Drawing.Size @(243,230)
+$form.StartPosition = 'CenterScreen'
+$calendar = New-Object System.Windows.Forms.MonthCalendar
+$calendar.ShowTodayCircle = $false
+$calendar.MaxSelectionCount = 1
+$form.Controls.Add($calendar)
+$OKButton = New-Object System.Windows.Forms.Button
+$OKButton.Location = New-Object System.Drawing.Point(38,165)
+$OKButton.Size = New-Object System.Drawing.Size(75,23)
+$OKButton.Text = 'OK'
+$OKButton.DialogResult = [System.Windows.Forms.DialogResult]::OK
+$form.AcceptButton = $OKButton
+$form.Controls.Add($OKButton)
+$CancelButton = New-Object System.Windows.Forms.Button
+$CancelButton.Location = New-Object System.Drawing.Point(113,165)
+$CancelButton.Size = New-Object System.Drawing.Size(75,23)
+$CancelButton.Text = 'Cancel'
+$CancelButton.DialogResult = [System.Windows.Forms.DialogResult]::Cancel
+$form.CancelButton = $CancelButton
+$form.Controls.Add($CancelButton)
+$form.Topmost = $true
+$result = $form.ShowDialog()
+if ($result -eq [System.Windows.Forms.DialogResult]::OK)
+{
+    $Enddate = $calendar.SelectionStart
+}
+if (! $enddate) {"Nothing selected, exiting...";return}
+$allrmres = get-azresource
+$allrmresresid = $allrmres.resourceid
+$allrmresresidlc = $allrmresresid | % {$_.toLower()}
+$chosenres = $allrmresresidlc | Out-GridView -Title "Select the Resource to analyse consumption for...." -passthru
+if (! $chosenres) {"Nothing selected, exiting...";return}
+$consumpts = Get-AzConsumptionUsageDetail -StartDate $startdate -EndDate $Enddate
+foreach ($onechosenres in $chosenres)
+{
+$ptc = 0
+$ptcrounded = 0
+$resconsumpts = $consumpts | ? {$_.InstanceId -eq $onechosenres}
+foreach ($oneconsumpt in $resconsumpts)
+{
+$ptc = $ptc + $oneconsumpt.PretaxCost
+$total = $total + $oneconsumpt.PretaxCost
+}
+$ptcrounded = [math]::Round($ptc,2)
+write-host "Charges for $onechosenres from $startdate to $enddate total £$ptcrounded"
+write-host "------------------------------------------------------------------------------------"
+}
+$totalrounded = [math]::Round($total,2)
+write-host "Total = £$totalrounded"
